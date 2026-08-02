@@ -1,0 +1,4 @@
+{ "id": "ddns", "title": "Dynamic DNS", "desc": "board-name.rfnm.me dynamic-DNS client (default = board serial; not a radio app).",
+  "unit": "rfnm-ddns", "radio": "none",
+  "api": { "port": 7685 },
+  "gui": { "panel": "none", "order": 90 } }

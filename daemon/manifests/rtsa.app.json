@@ -1,0 +1,7 @@
+{ "id": "rtsa", "title": "RTSA spectrum", "desc": "Real-time spectrum analyzer + waterfall (the RTSA tab).",
+  "unit": "rfnm-spectrum", "radio": "rx", "settle_s": 3, "idle_stop_s": 180,
+  "api": { "port": 7687, "version": 1 },
+  "liveness": { "mode": "clients" },
+  "data": [ { "kind": "spectrum-ws", "proto": "ws", "port": 7681, "dir": "out", "path": "/ws",
+              "desc": "RFSP v1 binary spectrum stream (single-viewer; direct :7681 or nginx /ws)" } ],
+  "gui": { "panel": "rtsa", "order": 10 } }

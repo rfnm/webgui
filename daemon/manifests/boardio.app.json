@@ -1,0 +1,4 @@
+{ "id": "boardio", "title": "Board I/O", "desc": "Bottom-edge header, live: GPIO visualize/toggle; PWM3, GPT1 capture, PPS and clock I/O arrive with their driver phases.",
+  "unit": "rfnm-boardio", "radio": "none", "idle_stop_s": 0,
+  "api": { "port": 7691 },
+  "gui": { "panel": "boardio", "order": 16 } }

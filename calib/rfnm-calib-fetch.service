@@ -1,0 +1,16 @@
+# Factory-calibration fetch (oneshot): api.rfnm.me/calib/<serial> -> /lib/firmware/rfnm/ +
+# vsgd table. Paired with rfnm-calib-fetch.timer (boot + periodic retry/refresh). Exit 2 =
+# transport failure; the timer's OnUnitInactiveSec fires again later regardless.
+[Unit]
+Description=RFNM factory calibration fetch
+After=network-online.target rfnm-appd.service
+# post-#76: identity via appd or the (probe-cached) sysfs nodes - no hwid-cache unit
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/rfnm/calib/rfnm-calib-fetch
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

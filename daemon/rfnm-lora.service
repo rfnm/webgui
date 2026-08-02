@@ -1,0 +1,21 @@
+# RFNM LoRa / Meshtastic (lorad, one daemon, mode-switchable). Managed by appd through the
+# radio lease: appd enforces the teardown settle (no ExecStartPre sleeps here) and writes
+# mode/region to /rfnm/apps/lora/app.conf (LORAD_MODE lorawan|meshtastic, LORAD_REGION
+# us915|eu868) via PUT /v1/apps/lora/config. Antenna/gain from /rfnm/apps/rf.conf.
+[Unit]
+Description=RFNM LoRa / Meshtastic receiver (lorad, mode+region via /rfnm/apps/lora/app.conf)
+After=network.target
+
+[Service]
+Type=simple
+Environment=LORAD_MODE=lorawan LORAD_REGION=us915 LORA_ANT=sma_a LORA_GAIN=30 LORA_AGC=1
+EnvironmentFile=-/rfnm/apps/lora/app.conf
+EnvironmentFile=-/rfnm/apps/rf.conf
+ExecStart=/rfnm/apps/lora/lorad --mode ${LORAD_MODE} --region ${LORAD_REGION} --antenna ${LORA_ANT} --gain ${LORA_GAIN} --agc ${LORA_AGC}
+Restart=on-failure
+RestartSec=10
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

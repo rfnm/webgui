@@ -1,0 +1,21 @@
+# vrtd: VITA 49.2 UDP bridge (data+context+command on 4991; status API 127.0.0.1:7689).
+# Radio lease: appd starts/stops this (never enable). TX ingest obeys /rfnm/board.conf -
+# three gates (engine drop + 0x3 acks + backend path override), fail-safe none.
+# VRT_ARGS (word-split) carries the per-deployment bits: --dest <host>:4991, stream ids.
+[Unit]
+Description=RFNM VITA 49.2 bridge (vrtd, UDP 4991; status API 127.0.0.1:7689)
+After=network.target
+
+[Service]
+Type=simple
+Environment=VRT_ANT=sma_a VRT_GAIN=20 VRT_AGC=0 VRT_ARGS=
+EnvironmentFile=-/rfnm/apps/rf.conf
+EnvironmentFile=-/rfnm/apps/vrt/app.conf
+ExecStart=/rfnm/apps/vrt/vrtd --antenna ${VRT_ANT} --gain ${VRT_GAIN} --agc ${VRT_AGC} --listen 4991 --port 7689 $VRT_ARGS
+Restart=on-failure
+RestartSec=10
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

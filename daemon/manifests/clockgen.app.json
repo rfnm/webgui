@@ -1,0 +1,4 @@
+{ "id": "clockgen", "title": "Clock Gen", "desc": "Si5510 OUT9 signal generator on the REF CLK OUT connector: 1 MHz - 200.099 MHz, 1 kHz grid. Safe to retune during radio streams.",
+  "unit": "rfnm-clockgen", "radio": "none", "idle_stop_s": 0,
+  "api": { "port": 7690 },
+  "gui": { "panel": "clockgen", "order": 15 } }

@@ -1,0 +1,5 @@
+{ "id": "clocksync", "title": "Clock Sync", "desc": "LTE-disciplined oscillator: disciplines the reference against a downlink carrier, RX-only.",
+  "unit": "rfnm-cellsync", "radio": "rx", "settle_s": 2, "idle_stop_s": 180,
+  "api": { "port": 7686 },
+  "rf": { "prefix": "CELL", "antenna": "embed", "gain": 30, "agc": true },
+  "gui": { "panel": "clocksync", "order": 25 } }

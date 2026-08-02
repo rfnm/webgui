@@ -1,0 +1,18 @@
+#!/bin/sh
+# egl_guard: keep libEGL.so.1 pointed at glvnd 1.1.0 (2026-07-22, both boards).
+# The Vivante EGL blob (soname version 1.5.0) outranks glvnd in ldconfig and crashes
+# mesa-gbm consumers (spectrumd). It is parked in vivante-egl-parked/; this guard
+# self-heals if ANY future ldconfig/hand-copy/vendor-script brings it back.
+# Runs as ExecStartPre of rfnm-spectrum; always exits 0 (never blocks the service).
+D=/lib/aarch64-linux-gnu
+if [ "$(readlink $D/libEGL.so.1)" != "libEGL.so.1.1.0" ]; then
+    echo "egl_guard: libEGL.so.1 -> $(readlink $D/libEGL.so.1) - repairing"
+    mkdir -p $D/vivante-egl-parked
+    for f in $D/libEGL.so.1.[2-9]*; do
+        [ -e "$f" ] && mv "$f" $D/vivante-egl-parked/ && echo "egl_guard: parked $f"
+    done
+    ldconfig
+    [ "$(readlink $D/libEGL.so.1)" = "libEGL.so.1.1.0" ] || ln -sf libEGL.so.1.1.0 $D/libEGL.so.1
+    echo "egl_guard: libEGL.so.1 -> $(readlink $D/libEGL.so.1)"
+fi
+exit 0

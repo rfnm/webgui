@@ -1,0 +1,15 @@
+# build outputs (selftests, offline tools, objects) - do not commit
+ismmon_selftest
+ismmon_wb
+ismmon_reach
+ismmon_wifi
+ismmon_dsss
+ismmon_ofdm
+ismmon_detcheck
+dsss_selftest
+dsss_offline
+wifi_offline
+detector_check
+*_x86
+*_a64
+*.o

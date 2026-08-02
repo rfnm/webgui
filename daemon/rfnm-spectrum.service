@@ -1,0 +1,25 @@
+[Unit]
+Description=RFNM on-board spectrum daemon (LA9310 -> GC7000UL FFT -> WebSocket)
+Documentation=file:///rfnm/spectrum/README
+After=network.target nginx.service
+# never rate-limit restarts: a crash/watchdog loop must degrade to short blips, not a
+# permanently dead GUI (2026-07-12 outage: repeated SEGVs hit the default start limit
+# and RTSA stayed down until a manual lease cycle)
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+# --no-agc is a BOARD-STATE exception: with the kernel DC-null
+# format-gated off for local sessions, the un-nulled analog DC rails the ADC lanes from
+# mid-gain up and any clip-referenced leveling attacks the whole span to gmin for nothing.
+# Drop the flag (AGC is the built-in default) once the DC null works for local sessions.
+ExecStartPre=/rfnm/scripts/egl_guard
+ExecStart=/rfnm/spectrum/bin/spectrumd --freq 2450000000 --rate 100000000 --gain 30 --path embed --no-agc
+Restart=on-failure
+RestartSec=2
+# The daemon owns local RX while running (excludes remote TCP RX clients by design).
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

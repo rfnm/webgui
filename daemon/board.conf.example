@@ -1,0 +1,7 @@
+# /rfnm/board.conf - board identity + TX policy read by appd (v1 API) and vsgd.
+# TX_ALLOWED: 0 = appd refuses the radio lease to radio:"tx" apps and vsgd refuses any TX
+# start; embed = TX lease granted but vsgd locks txpath to the embedded antenna (SMA paths
+# rejected); 1 = no limit.
+BOARD=myboard
+TX_ALLOWED=1
+AGC_AVAILABLE=0

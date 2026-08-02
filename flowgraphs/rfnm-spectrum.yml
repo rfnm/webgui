@@ -1,0 +1,181 @@
+---
+version: 2
+
+title: RFNM Spectrum (USB)
+summary: Simple waterfall and lineplot.
+author: Luigi
+license: MIT
+description: 'Shows how a CyberEther flowgraph can be used as a traditional SDR console. This example will take the samples from the SDR and display a frequency-domain representation of it.'
+
+graph:
+  - name: win
+    module: window
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      size: 4096
+    meta:
+      node:
+        y: 36
+        x: 22
+        height: 74
+        width: 140
+  - name: soapy
+    module: soapy
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      bufferMultiplier: 1024
+      sampleRate: 100000000
+      frequency: 2.45e+09
+      numberOfTimeSamples: 4096
+      numberOfBatches: 16
+      automaticGain: true
+      deviceString: 'driver=rfnm,serial=XXXXXXXX'
+    meta:
+      node:
+        y: 175
+        x: 22
+        height: 391
+        width: 140
+  - name: invert
+    module: invert
+    device: cpu
+    runtime: native
+    provider: generic
+    input:
+      signal: '${graph.win.output.window}'
+    meta:
+      node:
+        y: 39
+        x: 190
+        height: 63
+        width: 140
+  - name: multiply
+    module: multiply
+    device: cpu
+    runtime: native
+    provider: generic
+    input:
+      a: '${graph.invert.output.signal}'
+      b: '${graph.soapy.output.signal}'
+    meta:
+      node:
+        y: 63
+        x: 361
+        height: 85
+        width: 140
+  - name: fft
+    module: fft
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      forward: true
+    input:
+      signal: '${graph.multiply.output.product}'
+    meta:
+      node:
+        y: 56
+        x: 532
+        height: 96
+        width: 140
+  - name: amplitude
+    module: amplitude
+    device: cpu
+    runtime: native
+    provider: generic
+    input:
+      signal: '${graph.fft.output.signal}'
+    meta:
+      node:
+        y: 65
+        x: 697
+        height: 63
+        width: 140
+  - name: range
+    module: range
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      max: 0
+      min: -130
+    input:
+      signal: '${graph.amplitude.output.signal}'
+    meta:
+      node:
+        y: 52
+        x: 864
+        height: 129
+        width: 140
+  - name: lineplot
+    module: lineplot
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      thickness: 1
+      decimation: 1
+      numberOfHorizontalLines: 5
+      numberOfVerticalLines: 11
+      averaging: 1
+    input:
+      signal: '${graph.range.output.signal}'
+    meta:
+      surface_default:
+        detachedWidth: 1900
+        attachedWidth: 1560
+        detached: false
+        attachedHeight: 470
+        detachedHeight: 490
+      node:
+        y: 19
+        x: 1046
+        height: 349
+        width: 354
+  - name: waterfall
+    module: waterfall
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      interpolate: true
+      height: 512
+    input:
+      signal: '${graph.range.output.signal}'
+    meta:
+      surface_default:
+        detachedWidth: 1900
+        attachedWidth: 1560
+        detached: false
+        attachedHeight: 470
+        detachedHeight: 490
+      node:
+        y: 399
+        x: 1043
+        height: 302
+        width: 357
+
+meta:
+  stacks:
+    stack_0:
+      title: RFNM Spectrum
+      x: 4
+      y: 28
+      width: 1912
+      height: 1046
+      layout:
+        children:
+          - direction: up
+            ratio: 0.45
+            surfaces:
+              - block: lineplot
+                surface: default
+                order: 0
+          - surfaces:
+              - block: waterfall
+                surface: default
+                order: 1

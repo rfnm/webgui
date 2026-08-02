@@ -1,0 +1,5 @@
+{ "id": "ais", "title": "AIS receiver", "desc": "RX-only marine AIS receiver: dual-channel GMSK decode, ship roster and range map.",
+  "unit": "rfnm-ais", "radio": "rx", "settle_s": 2, "idle_stop_s": 180,
+  "api": { "port": 7686 },
+  "rf": { "prefix": "AIS", "antenna": "sma_a", "gain": 28, "agc": true },
+  "gui": { "panel": "ais", "order": 50 } }

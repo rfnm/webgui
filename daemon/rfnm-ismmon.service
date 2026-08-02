@@ -1,0 +1,21 @@
+# RFNM ISM Monitor (ismmond, RX-only 2.4 GHz air monitor: whole-band capture @ 100 MSPS / 2441 MHz,
+# GPU FFT burst-detect, BLE LE 1M advertising decode on ch37/38/39). Managed by appd (single LA9310
+# RX consumer - mutually exclusive with the other RF apps). Installed disabled; appd starts it with
+# `systemctl start` (never `enable`d). Reuses spectrumd's GPU FFT engine; binary in /rfnm/apps/ismmon.
+[Unit]
+Description=RFNM ISM Monitor (ismmond, decode tables on 127.0.0.1:7688 behind nginx /ismapi/)
+After=network.target
+
+[Service]
+Type=simple
+Environment=ISM_ANT=embed ISM_GAIN=30 ISM_AGC=1
+EnvironmentFile=-/rfnm/apps/rf.conf
+ExecStart=/rfnm/apps/ismmon/ismmond --port 7688 --antenna ${ISM_ANT} --gain ${ISM_GAIN} --agc ${ISM_AGC}
+Restart=on-failure
+RestartSec=3
+Nice=-5
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

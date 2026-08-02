@@ -1,0 +1,23 @@
+# RFNM cell-sync: LTE-disciplined Si5510 reference (cellsyncd, RX-only).
+# Managed by appd (single LA9310 RX consumer - mutually exclusive with the other RF apps).
+# No CELLSYNC_FREQ_MHZ = auto-acquire (US/EU candidate set + persisted last-good);
+# manual survey: cellsyncd --scan 731.5,739.0,751.0,882.5
+# RX antenna + gain come from /rfnm/apps/rf.conf (CELL_ANT / CELL_GAIN), set from the
+# Apps top-bar control; the daemon-side default is embed (751 MHz is below the SMA-A HPF).
+[Unit]
+Description=RFNM LTE-disciplined oscillator (cellsyncd, freq via /rfnm/apps/cellsync/cellsync.conf)
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/rfnm/apps/cellsync/cellsync.conf
+Environment=CELL_ANT=embed CELL_GAIN=30 CELL_AGC=1
+EnvironmentFile=-/rfnm/apps/rf.conf
+ExecStart=/rfnm/apps/cellsync/cellsyncd --freq ${CELLSYNC_FREQ_MHZ} --tau ${CELLSYNC_TAU_S} $CELLSYNC_ARGS --antenna ${CELL_ANT} --gain ${CELL_GAIN} --agc ${CELL_AGC}
+Restart=on-failure
+RestartSec=10
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

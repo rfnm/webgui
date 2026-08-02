@@ -1,0 +1,24 @@
+# RFNM ADS-B feeder: readsb with the native RFNM driver on the local transport.
+# Managed by appd (single LA9310 RX consumer - mutually exclusive with the other RF apps).
+[Unit]
+Description=RFNM ADS-B feeder (readsb, 1090 MHz via local transport)
+After=network.target
+
+[Service]
+Type=simple
+RuntimeDirectory=rfnm-adsb
+# ADSB_NET_FLAGS: whole flag string, empty = feeds off; appd's net config toggle writes it
+# to app.conf via the manifest flags_env/values pair. Bare $ = word-split (a ${} would be
+# ONE argument). Upstream readsb stays unpatched.
+Environment=ADSB_ANT=sma_a ADSB_GAIN=30 ADSB_AGC=1 ADSB_NET=off ADSB_NET_FLAGS=
+EnvironmentFile=-/rfnm/apps/rf.conf
+EnvironmentFile=-/rfnm/apps/adsb/app.conf
+ExecStart=/rfnm/apps/adsb/readsb --device-type rfnm --device local --rfnm-antenna ${ADSB_ANT} --gain ${ADSB_GAIN} --rfnm-agc ${ADSB_AGC} \
+	--write-json /run/rfnm-adsb --write-json-every 1 --quiet --stats-every 60 $ADSB_NET_FLAGS
+Restart=on-failure
+RestartSec=10
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

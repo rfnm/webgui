@@ -1,0 +1,14 @@
+# RFNM app switcher: exclusive start/stop of the RF apps (single LA9310 RX consumer).
+# Static aarch64 binary from daemon/appd.cpp (cross-built on a host).
+[Unit]
+Description=RFNM app switcher (HTTP control on 7683)
+After=network.target nginx.service
+
+[Service]
+Type=simple
+ExecStart=/rfnm/apps/appd
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

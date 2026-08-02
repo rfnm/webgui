@@ -1,0 +1,16 @@
+# RFNM dynamic-DNS client: registers <board-name>.rfnm.me with api.rfnm.me (default = board serial; config via web GUI gear icon).
+[Unit]
+Description=RFNM dynamic-DNS client (board-name.rfnm.me, HTTP control on 7685)
+After=network-online.target nginx.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/rfnm/ddns/bin/ddnsd
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

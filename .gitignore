@@ -1,0 +1,10 @@
+daemon/third_party/VkFFT/
+*.o
+CyberEther/
+ddns/build/
+daemon/appd-imx8mp
+daemon/ismmond-imx8mp
+daemon/spectrumd-imx8mp
+daemon/build-host/
+daemon/lrx_probe-imx8mp
+daemon/Makefile.local

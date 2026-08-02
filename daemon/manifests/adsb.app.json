@@ -1,0 +1,13 @@
+{ "id": "adsb", "title": "ADS-B feeder", "desc": "readsb decoding 1090 MHz Mode-S/ADS-B at 2.4 MSps with a native RFNM driver.",
+  "unit": "rfnm-adsb", "radio": "rx", "settle_s": 2, "idle_stop_s": 180,
+  "rf": { "prefix": "ADSB", "antenna": "sma_a", "gain": 30, "agc": true },
+  "config": [ { "key": "net", "env": "ADSB_NET", "choices": ["off", "on"], "restart": true,
+                "flags_env": "ADSB_NET_FLAGS",
+                "values": ["", "--net --net-bo-port 30005 --net-sbs-port 30003"] } ],
+  "data": [ { "kind": "aircraft-json", "proto": "http", "port": 80, "dir": "out", "path": "/adsb/aircraft.json",
+              "desc": "readsb aircraft snapshot (static, 1 Hz)" },
+            { "kind": "stats-json", "proto": "http", "port": 80, "dir": "out", "path": "/adsb/stats.json",
+              "desc": "readsb decoder stats" },
+            { "kind": "beast", "proto": "tcp", "port": 30005, "dir": "out", "desc": "BEAST binary out (net=on)" },
+            { "kind": "sbs", "proto": "tcp", "port": 30003, "dir": "out", "desc": "SBS/BaseStation out (net=on)" } ],
+  "gui": { "panel": "adsb", "order": 30 } }

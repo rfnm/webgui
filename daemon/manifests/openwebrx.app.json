@@ -1,0 +1,3 @@
+{ "id": "openwebrx", "title": "OpenWebRX", "desc": "Multi-user web SDR receiver served from this device, fed by a native librfnm connector.",
+  "unit": "openwebrx", "radio": "rx", "settle_s": 2, "idle_stop_s": 0, "open": 8073,
+  "gui": { "panel": "openwebrx", "order": 60 } }

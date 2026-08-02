@@ -1,0 +1,7 @@
+{ "id": "vrt", "title": "VITA 49.2 bridge", "desc": "VITA 49.2 UDP bridge: RX export (CS16 signal data + IF context), TX ingest and 49.2 command/ack control on UDP 4991. Machine-facing; TX ingest obeys the board TX policy (three gates, fail-safe none). No idle-stop: UDP consumers hold no connection - release the lease explicitly.",
+  "unit": "rfnm-vrt", "radio": "rx", "settle_s": 2, "idle_stop_s": 0,
+  "api": { "port": 7689, "version": 1 },
+  "rf": { "prefix": "VRT", "antenna": "sma_a", "gain": 20, "agc": false },
+  "data": [ { "kind": "vrt", "proto": "udp", "port": 4991, "dir": "inout",
+              "desc": "VRT signal data + context out; TX data + command packets in" } ],
+  "gui": { "panel": "generic", "order": 80 } }

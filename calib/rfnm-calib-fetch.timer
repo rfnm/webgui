@@ -1,0 +1,13 @@
+# Boot + 6-hourly calibration fetch/refresh: heals offline boots, picks up late factory
+# registration of prototype serials, and keeps blobs current. ENABLED in the distribution
+# (not appd-managed: this is a system oneshot, not a radio app).
+[Unit]
+Description=RFNM factory calibration fetch schedule
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=6h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

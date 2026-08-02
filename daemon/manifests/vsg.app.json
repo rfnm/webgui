@@ -1,0 +1,4 @@
+{ "id": "vsg", "title": "VSG", "desc": "Vector signal generator (TX). Only on TX-permitted boards.",
+  "unit": "rfnm-vsg", "radio": "tx", "settle_s": 3, "idle_stop_s": 180,
+  "api": { "port": 7682, "nginx_extra": "client_max_body_size 512m; proxy_read_timeout 120s;" },
+  "gui": { "panel": "vsg", "order": 70 } }

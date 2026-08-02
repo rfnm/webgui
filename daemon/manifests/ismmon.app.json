@@ -1,0 +1,5 @@
+{ "id": "ismmon", "title": "ISM Monitor", "desc": "2.4 GHz BLE + Wi-Fi air monitor: device roster, packet log, channel activity.",
+  "unit": "rfnm-ismmon", "radio": "rx", "settle_s": 2, "idle_stop_s": 180,
+  "api": { "port": 7688 },
+  "rf": { "prefix": "ISM", "antenna": "embed", "gain": 30, "agc": true },
+  "gui": { "panel": "ismmon", "order": 20 } }
