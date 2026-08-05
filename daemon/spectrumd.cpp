@@ -71,7 +71,12 @@ extern "C" {
 #define WS_ROWS_PER_MSG 16
 
 static volatile sig_atomic_t g_stop = 0;
-static void on_sig(int) { g_stop = 1; }
+/* exit-code honesty: an operator signal is the ONLY clean stop. Every internal
+ * fatal path sets g_stop without g_sig, and main exits 1 so systemd's
+ * Restart=on-failure actually fires - "stream start fail -> bye -> exit 0" left the
+ * GUI dead for the whole boot with a restart policy that never triggered. */
+static volatile sig_atomic_t g_sig = 0;
+static void on_sig(int) { g_sig = 1; g_stop = 1; }
 
 static void logts(const char *fmt, ...) {
 	char b[256];
@@ -3535,6 +3540,6 @@ int main(int argc, char **argv) {
 	if (t_src.joinable()) { t_src.join(); }
 	t_rec.join();
 	t_rechttp.join();
-	logts("bye");
-	return 0;
+	logts("bye%s", g_sig ? "" : " (internal failure, exiting 1 for systemd restart)");
+	return g_sig ? 0 : 1;
 }
