@@ -19,7 +19,18 @@ int main() {
 		dev.set_rx_channel_status(ch.id, RFNM_CH_RF_OFF, RFNM_CH_STREAM_OFF, false);
 		dev.apply(ch.apply, true, 1000000);
 		dev.set_rx_channel_freq(ch.id, RFNM_MHZ_TO_HZ(2450));
-		dev.set_rx_channel_gain(ch.id, 30);
+		// Clamp into the range this daughterboard actually advertises. A breakout board is
+		// a passive path to the SMAs and reports gain_range [0..0], so the previously
+		// hardcoded 30 dB was rejected device-side ("rx0 gain out of range: requested 30,
+		// allowed [0..0] dB") and start() then failed - making this acceptance gate
+		// impossible to pass on breakout hardware, for a reason unrelated to the stack.
+		int gain = 30;
+		if (const struct rfnm_api_rx_ch *rxc = dev.get_rx_channel(ch.id)) {
+			const int lo = rxc->gain_range.min, hi = rxc->gain_range.max;
+			if (gain < lo) gain = lo;
+			if (gain > hi) gain = hi;
+		}
+		dev.set_rx_channel_gain(ch.id, gain);
 		rfnm::rx_stream s(dev, 0x1);
 		if (auto r = s.start()) { printf("lrx_probe: stream start fail %d\n", r); return 2; }
 		std::vector<uint8_t> buf(bsz * 64);
