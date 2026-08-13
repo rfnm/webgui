@@ -2273,7 +2273,7 @@ window.addEventListener("DOMContentLoaded", () => {
 				emaAlpha: 0.1,
 			});
 		},
-		pushSweepIfOn() { if (engine.sweepMode) { applySweep((modeCtl.cmdA + modeCtl.cmdB) / 2, modeCtl.cmdB - modeCtl.cmdA); } },   /* reconnect: resume the same range */
+		pushSweepIfOn() { if (engine.sweepMode && sweepSupported()) { applySweep((modeCtl.cmdA + modeCtl.cmdB) / 2, modeCtl.cmdB - modeCtl.cmdA); } },   /* reconnect: resume the same range (never onto a passive board) */
 	};
 	["rate", "mode"].forEach(id => { $(id).onchange = ui.pushConfig; });
 	/* RX daughterboard + antenna path: TWO dropdowns fed by the daemon's PATHS announce
@@ -2312,6 +2312,7 @@ window.addEventListener("DOMContentLoaded", () => {
 			dsel.value = String(cur ? cur.dgb : dgbs[0]);
 			dsel.disabled = dgbs.length <= 1;
 			fillPathSel(cur ? cur.dgb : dgbs[0], p.curIdx);
+			syncSweepAvail();   /* the announce is what tells us whether this board HAS an LO */
 			if (reenterSweep) {
 				/* post-switch: resume the sweep inside the (possibly new) band */
 				const want = reenterSweep.spanMHz;
@@ -2371,8 +2372,39 @@ window.addEventListener("DOMContentLoaded", () => {
 		persist("sw_center", (r.a + r.b) / 2); persist("sw_span", r.b - r.a);
 		return true;
 	}
+	/* ---- boards with nothing to sweep ----
+	 * A sweep walks the LO across hops and stitches the captures. A PASSIVE daughterboard
+	 * has no LO: the Breakout wires each SMA straight to an ADC, so every hop would
+	 * re-capture the same baseband and the "span" would be a lie drawn at full confidence.
+	 * Refuse the mode there instead - real time is the whole instrument on such a board.
+	 * Keyed on the daughterboard name from the PATHS announce (dgb_name, the EEPROM
+	 * board_id string), so it follows a live board/antenna switch. No announce yet = allow;
+	 * onPaths runs syncSweepAvail() the moment the device tells us what is fitted. */
+	const NO_LO_BOARDS = ["breakout"];
+	function curDgbName() {
+		const e = rxPaths.entries[rxPaths.curIdx];
+		return e ? (rxPaths.names[e.dgb] || "") : "";
+	}
+	function sweepSupported() {
+		return NO_LO_BOARDS.indexOf(curDgbName().trim().toLowerCase()) < 0;
+	}
+	function syncSweepAvail() {
+		const ok = sweepSupported();
+		const btn = $("rt_sweep");
+		btn.disabled = !ok;
+		btn.title = ok ? "" : curDgbName() + ": passive path to the SMAs, no LO to sweep — real time only";
+		if (!ok && engine.sweepMode) { setSweepMode(false); }   /* switched onto a passive board mid-sweep */
+	}
+
 	function setSweepMode(on, opts) {
 		opts = opts || {};
+		if (on && !sweepSupported()) {
+			/* every entry point funnels here (button, zoom-out morph, span field, the
+			 * persisted-mode restore), so one refusal covers them all */
+			$("stats").textContent = curDgbName() + ": no LO to sweep — real time only";
+			if (engine.sweepMode) { setSweepMode(false); }
+			return;
+		}
 		engine.sweepMode = on;
 		engine._swHz = 0;
 		engine._swRowT = 0;

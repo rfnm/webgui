@@ -536,12 +536,15 @@ struct SweepAgc {
 		ref = cfg->gain;
 		gmin = ref; gmax = ref;
 		const struct rfnm_api_rx_ch *rc = dev.get_rx_channel(ch);
-		if (rc && static_cast<int>(rc->gain_range.max) > static_cast<int>(rc->gain_range.min)) {
+		if (rc && static_cast<int>(rc->gain_range.max) >= static_cast<int>(rc->gain_range.min)) {
 			gmin = rc->gain_range.min;
 			gmax = rc->gain_range.max;
 			if (ref < gmin) { ref = gmin; }
 			if (ref > gmax) { ref = gmax; }
 		}
+		/* no headroom to level with (a breakout advertises [0..0]): the table would stage the
+		 * same single legal value on every hop forever - leave the ladder alone */
+		if (gmin == gmax) { on = false; }
 		gain.assign(nhops, ref);
 		low.assign(nhops, 0);
 		last_log = std::chrono::steady_clock::now();
@@ -1448,15 +1451,26 @@ static void rx_source(Cfg *cfg, TuneBox *tune, SweepBox *sweep, SlotPool *sp, Ro
 		auto rx_ch = dev.rx_ch_helper(0);
 		dev.set_rx_channel_freq(rx_ch.id, static_cast<uint64_t>(cfg->freq), false);
 		int agc_gmin = cfg->gain, agc_gmax = cfg->gain;
+		bool have_grange = false;
 		{
 			/* clamp the reference gain to the device's advertised range (an out-of-range
-			 * hardcode is an apply reject); the range also bounds the leveling steppers */
+			 * hardcode is an apply reject, and the reject fails the WHOLE apply - freq and
+			 * path with it); the range also bounds the leveling steppers.
+			 * A degenerate range is a real advertisement, not a missing one: the breakout
+			 * daughterboard is a passive path to the SMAs and advertises [0..0]. The unit's
+			 * --gain 30 is then a request this board cannot honour, not an error - clamp it
+			 * and say so, the way every other librfnm client in the fleet does. */
 			const struct rfnm_api_rx_ch *rc = dev.get_rx_channel(rx_ch.id);
-			if (rc && static_cast<int>(rc->gain_range.max) > static_cast<int>(rc->gain_range.min)) {
+			if (rc && static_cast<int>(rc->gain_range.max) >= static_cast<int>(rc->gain_range.min)) {
 				agc_gmin = rc->gain_range.min;
 				agc_gmax = rc->gain_range.max;
-				if (cfg->gain < agc_gmin) { cfg->gain = agc_gmin; }
-				if (cfg->gain > agc_gmax) { cfg->gain = agc_gmax; }
+				have_grange = true;
+				if (cfg->gain < agc_gmin || cfg->gain > agc_gmax) {
+					const int want = cfg->gain;
+					cfg->gain = cfg->gain < agc_gmin ? agc_gmin : agc_gmax;
+					logts("gain %d dB is outside this daughterboard's advertised range [%d..%d] - using %d dB",
+							want, agc_gmin, agc_gmax, cfg->gain);
+				}
 			}
 		}
 		dev.set_rx_channel_gain(rx_ch.id, cfg->gain, false);
@@ -1922,6 +1936,12 @@ static void rx_source(Cfg *cfg, TuneBox *tune, SweepBox *sweep, SlotPool *sp, Ro
 			int32_t g = tune->gain.exchange(INT32_MIN, std::memory_order_acq_rel);
 			int32_t areq = tune->agc_req.exchange(-1, std::memory_order_acq_rel);
 			if (g != INT32_MIN) { areq = 0; }   /* an explicit gain IS the manual override */
+			if (g != INT32_MIN && have_grange) {
+				/* the UI slider is not authority over what this daughterboard has: a rejected
+				 * gain would fail the whole retune apply, taking the LO change with it */
+				if (g < agc_gmin) { g = agc_gmin; }
+				if (g > agc_gmax) { g = agc_gmax; }
+			}
 			if (fkhz || g != INT32_MIN) {
 				if (fkhz) { dev.set_rx_channel_freq(rx_ch.id, fkhz * 1000ull, false); }
 				if (g != INT32_MIN) { dev.set_rx_channel_gain(rx_ch.id, static_cast<int8_t>(g), false); }
@@ -1995,7 +2015,23 @@ static void rx_source(Cfg *cfg, TuneBox *tune, SweepBox *sweep, SlotPool *sp, Ro
 						}
 					}
 					dev.set_rx_channel_freq(nch.id, static_cast<uint64_t>(nfreq), false);
-					dev.set_rx_channel_gain(nch.id, static_cast<int8_t>(cfg->gain), false);
+					/* same for gain: the target channel may live on the OTHER daughterboard,
+					 * whose range need not contain this session's gain (a lime session moving
+					 * onto a breakout SMA carries a gain that board advertises as [0..0]).
+					 * Computed here, committed only if the switch actually lands. */
+					int ngain = cfg->gain, ngmin = agc_gmin, ngmax = agc_gmax;
+					bool nhave_grange = have_grange;
+					{
+						const struct rfnm_api_rx_ch *nrc = dev.get_rx_channel(pch);
+						if (nrc && static_cast<int>(nrc->gain_range.max) >= static_cast<int>(nrc->gain_range.min)) {
+							ngmin = nrc->gain_range.min;
+							ngmax = nrc->gain_range.max;
+							nhave_grange = true;
+							if (ngain < ngmin) { ngain = ngmin; }
+							if (ngain > ngmax) { ngain = ngmax; }
+						}
+					}
+					dev.set_rx_channel_gain(nch.id, static_cast<int8_t>(ngain), false);
 					dev.set_rx_channel_agc(nch.id, RFNM_AGC_OFF, false);   /* leveling is host-side; the device field stays OFF */
 					dev.set_rx_channel_path(nch.id, pth, false);
 					dev.set_rx_channel_fe_mode(nch.id, fe_mode, false);   /* #39: the panorama contract moves with the session */
@@ -2009,6 +2045,15 @@ static void rx_source(Cfg *cfg, TuneBox *tune, SweepBox *sweep, SlotPool *sp, Ro
 						rx_channel = pch;
 						cfg->path = pstr;
 						cfg->freq = nfreq;
+						if (ngain != cfg->gain) {
+							logts("antenna: gain %d dB -> %d dB (ch%u advertises [%d..%d])",
+									cfg->gain, ngain, pch, ngmin, ngmax);
+						}
+						cfg->gain = ngain;         /* the steppers and STATUS follow the new channel's world */
+						rt_gain = ngain;
+						agc_gmin = ngmin; agc_gmax = ngmax; have_grange = nhave_grange;
+						g_agc_gain.store(cfg->gain, std::memory_order_relaxed);
+						g_rec.cur_gain.store(cfg->gain, std::memory_order_relaxed);
 						g_rec.cur_freq.store(static_cast<uint64_t>(cfg->freq), std::memory_order_relaxed);
 						snprintf(g_rec.cur_path, sizeof(g_rec.cur_path), "%s", pstr);
 						path_menu_set_current(rx_channel, cfg->path);
