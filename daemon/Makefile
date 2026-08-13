@@ -20,7 +20,7 @@ LIBRFNM ?= $(abspath $(CURDIR)/../../librfnm)
 CXX_X    = $(CROSS)g++ --sysroot=$(SYSROOT) -isystem $(SYSROOT)/usr/local/include
 CC_X     = $(CROSS)gcc --sysroot=$(SYSROOT)
 ARCH     = -mcpu=cortex-a53
-LD_X     = -L$(SYSROOT)/usr/local/lib -Wl,-rpath-link,$(SYSROOT)/usr/lib/aarch64-linux-gnu:$(SYSROOT)/lib/aarch64-linux-gnu:$(SYSROOT)/usr/local/lib
+LD_X     = -L$(SYSROOT)/usr/local/lib -L$(SYSROOT)/usr/lib/aarch64-linux-gnu -Wl,-rpath-link,$(SYSROOT)/usr/lib/aarch64-linux-gnu:$(SYSROOT)/lib/aarch64-linux-gnu:$(SYSROOT)/usr/local/lib
 
 ISM_SRCS = ismmon/src/ble.cpp ismmon/src/ble_coded.cpp ismmon/src/gfsk_rx.cpp ismmon/src/wifi.cpp \
 	ismmon/src/wifi_dsss.cpp ismmon/src/capture_rfnm.cpp ismmon/src/httpd.cpp ismmon/src/ismmond.cpp
