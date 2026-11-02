@@ -25,8 +25,9 @@ window.__RFNM_APP_MODULES.push({
 const SUBS = ["a", "b", "c", "d"];
 const TILESETS = {
 	map: { name: "map", label: "Dark map", dark: true,
-		url: (z, x, y) => "https://" + SUBS[(x + y) & 3] + ".basemaps.cartocdn.com/dark_all/" + z + "/" + x + "/" + y + ".png",
-		attr: "© OpenStreetMap · © CARTO" },
+		url: (z, x, y) => "https://tile.openstreetmap.org/" + z + "/" + x + "/" + y + ".png",
+		filter: "invert(1) hue-rotate(180deg) brightness(0.9)",
+		attr: "© OpenStreetMap contributors" },
 	sat: { name: "sat", label: "Satellite", dark: true,
 		url: (z, x, y) => "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/" + z + "/" + y + "/" + x,
 		attr: "Imagery © Esri, Maxar, Earthstar Geographics" },
@@ -113,6 +114,7 @@ const S = {
 	ac: [], stats: null, now: 0, messages: 0, selected: null, filter: "",
 	basemap: "map", tiles: new Map(), tileErr: 0, tileOk: 0, redraw: false,
 	sortKey: "dist", sortDir: 1, tblPrint: "", geoBox: null, geoLoading: false, cv: null,
+	manual: null, drag: null, dragged: false,   // manual = {lat, lon, z}: user view, null = auto-fit
 };
 
 // ---- Web Mercator ----------------------------------------------------------------------
@@ -121,13 +123,13 @@ const merc = { x: lon => (lon + 180) / 360, y: lat => (1 - Math.asinh(Math.tan(l
 
 // fractional zoom so the wanted radius (km) fits half the smaller canvas dimension at center lat
 function viewOf(cv) {
-	const c = S.center;
+	const c = S.manual || S.center;
 	if(!c) { return null; }
 	const w = cv.clientWidth, h = cv.clientHeight;
 	const halfPx = Math.min(w, h) / 2 - 18;
 	const mppWant = (S.radius * 1000) / Math.max(halfPx, 1);
 	let z = Math.log2(156543.03 * Math.cos(c.lat * RAD) / mppWant);
-	z = Math.max(3, Math.min(12, z));
+	z = S.manual ? S.manual.z : Math.max(3, Math.min(12, z));
 	const world = 256 * Math.pow(2, z);
 	const cwx = merc.x(c.lon) * world, cwy = merc.y(c.lat) * world;
 	const cx = w / 2, cy = h / 2;
@@ -136,6 +138,59 @@ function viewOf(cv) {
 		mpp: 156543.03 * Math.cos(c.lat * RAD) / Math.pow(2, z),
 		toXY: (lon, lat) => [cx + merc.x(lon) * world - cwx, cy + merc.y(lat) * world - cwy],
 	};
+}
+
+// ---- manual view: wheel zoom around the pointer, drag pan, double click or Auto = auto-fit --
+const unmerc = (fx, fy) => ({
+	lon: fx * 360 - 180,
+	lat: Math.atan(Math.sinh(Math.PI * (1 - 2 * Math.max(0.001, Math.min(0.999, fy))))) / RAD,
+});
+// view centre that puts world fraction (fx, fy) at pixel offset (dx, dy) from the centre, at zoom z
+function centreFor(fx, fy, dx, dy, z) {
+	const world = 256 * Math.pow(2, z);
+	return { ...unmerc(fx - dx / world, fy - dy / world), z };
+}
+function pointerFrac(V, mx, my) {
+	return [merc.x(V.c.lon) + (mx - V.cx) / V.world, merc.y(V.c.lat) + (my - V.cy) / V.world];
+}
+function mapPos(cv, ev) {
+	const r = cv.getBoundingClientRect();
+	return [ev.clientX - r.left, ev.clientY - r.top];
+}
+function onWheel(cv, ev) {
+	ev.preventDefault();
+	const V = viewOf(cv);
+	if(!V) { return; }
+	const [mx, my] = mapPos(cv, ev);
+	const [fx, fy] = pointerFrac(V, mx, my);
+	const px = ev.deltaMode === 1 ? ev.deltaY * 16 : ev.deltaY;
+	const z = Math.max(3, Math.min(17, V.z - Math.max(-0.6, Math.min(0.6, px * 0.002))));
+	S.manual = centreFor(fx, fy, mx - V.cx, my - V.cy, z);
+	draw(cv);
+}
+function onDown(cv, ev) {
+	if(ev.button !== 0 || ev.pointerType === "touch") { return; }
+	const V = viewOf(cv);
+	if(!V) { return; }
+	const [mx, my] = mapPos(cv, ev);
+	const [fx, fy] = pointerFrac(V, mx, my);
+	S.drag = { x: mx, y: my, fx, fy, z: V.z, cx: V.cx, cy: V.cy };
+	S.dragged = false;
+	cv.setPointerCapture(ev.pointerId);
+}
+function onMove(cv, ev) {
+	const d = S.drag;
+	if(!d) { return; }
+	const [mx, my] = mapPos(cv, ev);
+	if(!S.dragged && Math.hypot(mx - d.x, my - d.y) < 4) { return; }
+	S.dragged = true;
+	cv.style.cursor = "grabbing";
+	S.manual = centreFor(d.fx, d.fy, mx - d.cx, my - d.cy, d.z);
+	draw(cv);
+}
+function onUp(cv) {
+	S.drag = null;
+	cv.style.cursor = "";
 }
 
 // ---- tiles -----------------------------------------------------------------------------
@@ -170,6 +225,7 @@ function drawTiles(g, view, set) {
 	const tx0 = Math.floor((cwx - view.cx / scale) / 256), tx1 = Math.floor((cwx + view.cx / scale) / 256);
 	const ty0 = Math.floor((cwy - view.cy / scale) / 256), ty1 = Math.floor((cwy + view.cy / scale) / 256);
 	let ok = false;
+	if(set.filter) { g.filter = set.filter; }
 	for(let tx = tx0; tx <= tx1; tx++) {
 		for(let ty = ty0; ty <= ty1; ty++) {
 			if(ty < 0 || ty >= nt) { continue; }
@@ -181,6 +237,7 @@ function drawTiles(g, view, set) {
 			}
 		}
 	}
+	if(set.filter) { g.filter = "none"; }
 	return ok;
 }
 
@@ -258,7 +315,12 @@ function ensurePanel(id) {
 	for(const k of ["map", "sat", "coast"]) { const o = document.createElement("option"); o.value = k; o.textContent = TILESETS[k].label; bmSel.appendChild(o); }
 	bmSel.value = S.basemap;
 	bmSel.onchange = () => { S.basemap = bmSel.value; draw(map); };
-	ctl.append(search, bmSel);
+	const fit = document.createElement("button");
+	fit.type = "button";
+	fit.textContent = "Auto";
+	fit.title = "back to the automatic view (or double-click the map)";
+	fit.onclick = () => { S.manual = null; draw(map); };
+	ctl.append(search, bmSel, fit);
 	const attr = a.el("div", "adsb-attr");
 	const legend = a.el("div", "adsb-legend");
 	legend.append(a.el("span", null, "altitude:"));
@@ -271,7 +333,16 @@ function ensurePanel(id) {
 	}
 	const detail = a.el("div", "adsb-detail");
 	detail.style.display = "none";
-	map.onclick = ev => hitTest(id, map, ev);
+	map.onclick = ev => {
+		if(S.dragged) { S.dragged = false; return; }   // the click that ends a drag selects nothing
+		hitTest(id, map, ev);
+	};
+	map.ondblclick = () => { S.manual = null; draw(map); };
+	map.addEventListener("wheel", ev => onWheel(map, ev), { passive: false });
+	map.addEventListener("pointerdown", ev => onDown(map, ev));
+	map.addEventListener("pointermove", ev => onMove(map, ev));
+	map.addEventListener("pointerup", () => onUp(map));
+	map.addEventListener("pointercancel", () => onUp(map));
 	mapwrap.append(map, ctl, legend, attr, detail);
 
 	const tblwrap = a.el("div", "adsb-tblwrap");
@@ -364,7 +435,9 @@ function draw(cv) {
 
 	// zoom-to-fit with hysteresis (drives V.z on the next frame)
 	let need = 20;
-	for(const a of pos) { need = Math.max(need, distBearing(V.c, a).dist); }
+	const stn = S.center || V.c;
+	const [sx, sy] = V.toXY(stn.lon, stn.lat);   // rings belong to the station, not to a panned view
+	for(const a of pos) { need = Math.max(need, distBearing(stn, a).dist); }
 	need *= 1.15;
 	S.radius = need > S.radius ? need : S.radius + (need - S.radius) * 0.08;
 
@@ -383,13 +456,13 @@ function draw(cv) {
 	g.strokeStyle = "rgba(120,150,190,0.22)"; g.fillStyle = "rgba(150,175,205,0.6)";
 	for(let r = step; r <= S.radius; r += step) {
 		const rp = r * 1000 / V.mpp;
-		g.beginPath(); g.arc(V.cx, V.cy, rp, 0, 2 * Math.PI); g.stroke();
-		g.fillText(r + " km", V.cx + 3, V.cy - rp + 11);
+		g.beginPath(); g.arc(sx, sy, rp, 0, 2 * Math.PI); g.stroke();
+		g.fillText(r + " km", sx + 3, sy - rp + 11);
 	}
 	g.strokeStyle = "rgba(150,175,205,0.5)"; g.beginPath();
-	g.moveTo(V.cx - 6, V.cy); g.lineTo(V.cx + 6, V.cy); g.moveTo(V.cx, V.cy - 6); g.lineTo(V.cx, V.cy + 6); g.stroke();
+	g.moveTo(sx - 6, sy); g.lineTo(sx + 6, sy); g.moveTo(sx, sy - 6); g.lineTo(sx, sy + 6); g.stroke();
 	g.fillStyle = "rgba(150,175,205,0.6)"; g.fillText("N", V.cx - 3, 12);
-	if(S.home) { g.fillStyle = "#5da8dc"; g.beginPath(); g.arc(V.cx, V.cy, 3.5, 0, 2 * Math.PI); g.fill(); }
+	if(S.home) { g.fillStyle = "#5da8dc"; g.beginPath(); g.arc(sx, sy, 3.5, 0, 2 * Math.PI); g.fill(); }
 
 	// trails (stored in lon/lat, projected here so they survive zoom/pan)
 	for(const a of pos) {
