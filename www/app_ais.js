@@ -25,6 +25,7 @@ const S = {
 	ships: new Map(),        // mmsi -> merged record (static + position + trail)
 	center: null,            // {lat,lon} smoothed map centre (fleet median)
 	radiusKm: 3,             // hysteresis zoom radius (km); rings are labelled in nm
+	manual: null, drag: null, dragged: false,   // manual = {lat, lon, z}: user view
 	status: null,            // last /status payload
 	lastTotal: null, lastT: null, rate: null,   // /status.total -> smoothed msgs/s
 	lastMsgTotal: null,      // /messages.total, watched for a daemon restart
@@ -49,8 +50,9 @@ const POS_TYPES = new Set([1, 2, 3, 4, 9, 18, 19, 21]);   // message types that 
 const SUBS = ["a", "b", "c", "d"];
 const TILESETS = {
 	map: { name: "map", label: "Dark map", dark: true,
-		url: (z, x, y) => "https://" + SUBS[(x + y) & 3] + ".basemaps.cartocdn.com/dark_all/" + z + "/" + x + "/" + y + ".png",
-		attr: "© OpenStreetMap · © CARTO" },
+		url: (z, x, y) => "https://tile.openstreetmap.org/" + z + "/" + x + "/" + y + ".png",
+		filter: "invert(1) hue-rotate(180deg) brightness(0.9)",
+		attr: "© OpenStreetMap contributors" },
 	sat: { name: "sat", label: "Satellite", dark: true,
 		url: (z, x, y) => "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/" + z + "/" + y + "/" + x,
 		attr: "Imagery © Esri, Maxar, Earthstar Geographics" },
@@ -173,13 +175,13 @@ const merc = { x: lon => (lon + 180) / 360, y: lat => (1 - Math.asinh(Math.tan(l
 
 // fractional zoom so the wanted radius (km) fits half the smaller canvas dim at centre lat
 function viewOf(cv) {
-	const c = S.center;
+	const c = S.manual || S.center;
 	if(!c) { return null; }
 	const w = cv.clientWidth, h = cv.clientHeight;
 	const halfPx = Math.min(w, h) / 2 - 18;
 	const mppWant = (S.radiusKm * 1000) / Math.max(halfPx, 1);
 	let z = Math.log2(156543.03 * Math.cos(c.lat * RAD) / mppWant);
-	z = Math.max(3, Math.min(15, z));   // harbours are tight, allow deeper zoom than ADS-B
+	z = S.manual ? S.manual.z : Math.max(3, Math.min(15, z));   // harbours are tight, allow deeper zoom than ADS-B
 	const world = 256 * Math.pow(2, z);
 	const cwx = merc.x(c.lon) * world, cwy = merc.y(c.lat) * world;
 	const cx = w / 2, cy = h / 2;
@@ -188,6 +190,51 @@ function viewOf(cv) {
 		mpp: 156543.03 * Math.cos(c.lat * RAD) / Math.pow(2, z),
 		toXY: (lon, lat) => [cx + merc.x(lon) * world - cwx, cy + merc.y(lat) * world - cwy],
 	};
+}
+
+// ---- manual view: wheel zoom around the pointer, drag pan, double click or Auto = auto-fit --
+const unmerc = (fx, fy) => ({
+	lon: fx * 360 - 180,
+	lat: Math.atan(Math.sinh(Math.PI * (1 - 2 * Math.max(0.001, Math.min(0.999, fy))))) / RAD,
+});
+function centreFor(fx, fy, dx, dy, z) {
+	const world = 256 * Math.pow(2, z);
+	return { ...unmerc(fx - dx / world, fy - dy / world), z };
+}
+function pointerFrac(V, mx, my) {
+	return [merc.x(V.c.lon) + (mx - V.cx) / V.world, merc.y(V.c.lat) + (my - V.cy) / V.world];
+}
+function mapPos(cv, ev) {
+	const r = cv.getBoundingClientRect();
+	return [ev.clientX - r.left, ev.clientY - r.top];
+}
+function zoomAt(cv, V, ev) {
+	const [mx, my] = mapPos(cv, ev);
+	const [fx, fy] = pointerFrac(V, mx, my);
+	const px = ev.deltaMode === 1 ? ev.deltaY * 16 : ev.deltaY;
+	const z = Math.max(3, Math.min(17, V.z - Math.max(-0.6, Math.min(0.6, px * 0.002))));
+	S.manual = centreFor(fx, fy, mx - V.cx, my - V.cy, z);
+}
+function dragStart(cv, V, ev) {
+	const [mx, my] = mapPos(cv, ev);
+	const [fx, fy] = pointerFrac(V, mx, my);
+	S.drag = { x: mx, y: my, fx, fy, z: V.z, cx: V.cx, cy: V.cy };
+	S.dragged = false;
+	cv.setPointerCapture(ev.pointerId);
+}
+function dragMove(cv, ev) {
+	const d = S.drag;
+	if(!d) { return false; }
+	const [mx, my] = mapPos(cv, ev);
+	if(!S.dragged && Math.hypot(mx - d.x, my - d.y) < 4) { return false; }
+	S.dragged = true;
+	cv.style.cursor = "grabbing";
+	S.manual = centreFor(d.fx, d.fy, mx - d.cx, my - d.cy, d.z);
+	return true;
+}
+function dragEnd(cv) {
+	S.drag = null;
+	cv.style.cursor = "";
 }
 
 function getTile(set, z, x, y) {
@@ -220,6 +267,7 @@ function drawTiles(g, view, set) {
 	const tx0 = Math.floor((cwx - view.cx / scale) / 256), tx1 = Math.floor((cwx + view.cx / scale) / 256);
 	const ty0 = Math.floor((cwy - view.cy / scale) / 256), ty1 = Math.floor((cwy + view.cy / scale) / 256);
 	let ok = false;
+	if(set.filter) { g.filter = set.filter; }
 	for(let tx = tx0; tx <= tx1; tx++) {
 		for(let ty = ty0; ty <= ty1; ty++) {
 			if(ty < 0 || ty >= nt) { continue; }
@@ -231,6 +279,7 @@ function drawTiles(g, view, set) {
 			}
 		}
 	}
+	if(set.filter) { g.filter = "none"; }
 	return ok;
 }
 
@@ -355,12 +404,35 @@ function ensurePanel(id) {
 	for(const k of ["map", "sat", "coast"]) { const o = document.createElement("option"); o.value = k; o.textContent = TILESETS[k].label; bmSel.appendChild(o); }
 	bmSel.value = S.basemap;
 	bmSel.onchange = () => { S.basemap = bmSel.value; drawShips(map); };
-	ctl.append(search, bmSel);
+	const fit = document.createElement("button");
+	fit.type = "button";
+	fit.textContent = "Auto";
+	fit.title = "back to the automatic view (or double-click the map)";
+	fit.onclick = () => { S.manual = null; drawShips(map); };
+	ctl.append(search, bmSel, fit);
 	const attr = A.el("div", "ais-attr");
 	const legend = A.el("div", "ais-legend");
 	const detail = A.el("div", "ais-detail");
 	detail.style.display = "none";
-	map.onclick = ev => hitTest(id, map, ev);
+	map.onclick = ev => {
+		if(S.dragged) { S.dragged = false; return; }   // the click that ends a drag selects nothing
+		hitTest(id, map, ev);
+	};
+	map.ondblclick = () => { S.manual = null; drawShips(map); };
+	map.addEventListener("wheel", ev => {
+		const V = viewOf(map);
+		if(!V) { return; }
+		ev.preventDefault();
+		zoomAt(map, V, ev);
+		drawShips(map);
+	}, { passive: false });
+	map.addEventListener("pointerdown", ev => {
+		const V = viewOf(map);
+		if(V && ev.button === 0 && ev.pointerType !== "touch") { dragStart(map, V, ev); }
+	});
+	map.addEventListener("pointermove", ev => { if(dragMove(map, ev)) { drawShips(map); } });
+	map.addEventListener("pointerup", () => dragEnd(map));
+	map.addEventListener("pointercancel", () => dragEnd(map));
 	mapwrap.append(map, ctl, legend, attr, detail);
 
 	const lower = A.el("div", "ais-lower");
@@ -570,6 +642,8 @@ function drawShips(cv) {
 		else { S.center.lat += (med.lat - S.center.lat) * 0.15; S.center.lon += (med.lon - S.center.lon) * 0.15; }
 	}
 	const V = viewOf(cv);
+	const stn = S.center || (V && V.c);
+	const [sx, sy] = V ? V.toXY(stn.lon, stn.lat) : [0, 0];   // rings stay on the fleet, not on a panned view
 	if(!V) {
 		g.fillStyle = "#3e6188"; g.textAlign = "center";
 		g.fillText("waiting for a position fix…", w / 2, h / 2);
@@ -598,11 +672,11 @@ function drawShips(cv) {
 	g.strokeStyle = "rgba(120,150,190,0.22)"; g.fillStyle = "rgba(150,175,205,0.6)";
 	for(let r = step; r <= radiusNm; r += step) {
 		const rp = r * 1852 / V.mpp;
-		g.beginPath(); g.arc(V.cx, V.cy, rp, 0, 2 * Math.PI); g.stroke();
-		g.fillText((r < 1 ? r : r) + " nm", V.cx + 3, V.cy - rp + 11);
+		g.beginPath(); g.arc(sx, sy, rp, 0, 2 * Math.PI); g.stroke();
+		g.fillText((r < 1 ? r : r) + " nm", sx + 3, sy - rp + 11);
 	}
 	g.strokeStyle = "rgba(150,175,205,0.5)"; g.beginPath();
-	g.moveTo(V.cx - 6, V.cy); g.lineTo(V.cx + 6, V.cy); g.moveTo(V.cx, V.cy - 6); g.lineTo(V.cx, V.cy + 6); g.stroke();
+	g.moveTo(sx - 6, sy); g.lineTo(sx + 6, sy); g.moveTo(sx, sy - 6); g.lineTo(sx, sy + 6); g.stroke();
 	g.fillStyle = "rgba(150,175,205,0.6)"; g.fillText("N", V.cx - 3, 12);
 
 	// trails (stored lon/lat, projected here)
